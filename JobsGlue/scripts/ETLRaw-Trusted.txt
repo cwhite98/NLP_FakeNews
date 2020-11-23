@@ -1,0 +1,166 @@
+import sys
+from awsglue.transforms import *
+from awsglue.utils import getResolvedOptions
+from pyspark.context import SparkContext
+from awsglue.context import GlueContext
+from awsglue.dynamicframe import DynamicFrame
+from awsglue.job import Job
+
+import sparknlp
+
+from sparknlp.base import *
+from sparknlp.annotator import *
+from pyspark.ml import Pipeline
+from pyspark.sql.types import StringType, ArrayType
+from pyspark.sql import SparkSession
+from pyspark.sql import functions as F
+import pandas as pd
+import numpy as np
+
+spark_context = SparkContext.getOrCreate()
+glue_context = GlueContext(spark_context)
+session = glue_context.spark_session
+job = Job(glue_context)
+
+#spark = sparknlp.start()
+spark = SparkSession.builder \
+    .appName("Spark NLP")\
+    .master("local[4]")\
+    .config("spark.driver.memory","16G")\
+    .config("spark.driver.maxResultSize", "0") \
+    .config("spark.jars.packages", "com.johnsnowlabs.nlp:spark-nlp_2.11-2.5.0")\
+    .config("spark.driver.extraClassPath", "com.johnsnowlabs.nlp:spark-nlp_2.11-2.5.0")\
+    .config("spark.executor.extraClassPath", "com.johnsnowlabs.nlp:spark-nlp_2.11-2.5.0")\
+    .config("spark.kryoserializer.buffer.max", "1000M")\
+    .getOrCreate()
+print("Spark NLP version", sparknlp.version())
+print("Apache Spark version:", spark.version)
+
+#Eliminar url, puntuacion y caracteres especiales menos el #, simbolos y emojis, números.
+patterns = ['https?://\S+|WWW\.\S+', 
+            "[\\.\\…\\,\\:\\;\\-\\!\\?\\n\\t,\\%\\@\\$\\¢\\*\\\+\\|\\=\\(\\)\\\"\\>\\<\\/\\'\\`\\&\\~\\[\\]]",
+            """[^ 'a-zA-Z0-9,.?!]""",
+            "[0-9]+",
+            "\\W*\\b\\w\\b\\W*"]
+            
+stopwords_list = ["a", "about", "above", "after", "again", "against", "ain", "all", "am", "an", "and", "any", "are", "aren", "aren't", 
+"as", "at", "be", "because", "been", "before", "being", "below", "between", "both", "but", "by", "can", "couldn", "couldn't", "d", "did", 
+"didn", "didn't", "do", "does", "doesn", "doesn't", "doing", "don", "don't", "down", "during", "each", "few", "for", "from", "further", 
+"had", "hadn", "hadn't", "has", "hasn", "hasn't", "have", "haven", "haven't", "having", "he", "her", "here", "hers", "herself", "him", 
+"himself", "his", "how", "i", "if", "in", "into", "is", "isn", "isn't", "it", "it's", "its", "itself", "just", "ll", "m", "ma", "me", 
+"mightn", "mightn't", "more", "most", "mustn", "mustn't", "my", "myself", "needn", "needn't", "no", "nor", "not", "now", "o", "of", "off",
+"on", "once", "only", "or", "other", "our", "ours", "ourselves", "out", "over", "own", "re", "s", "same", "shan", "shan't", "she", "she's", 
+"should", "should've", "shouldn", "shouldn't", "so", "some", "such", "t", "than", "that", "that'll", "the", "their", "theirs", "them", 
+"themselves", "then", "there", "these", "they", "this", "those", "through", "to", "too", "under", "until", "up", "ve", "very", "was", 
+"wasn", "wasn't", "we", "were", "weren", "weren't", "what", "when", "where", "which", "while", "who", "whom", "why", "will", "with", "won", 
+"won't", "wouldn", "wouldn't", "y", "you", "you'd", "you'll", "you're", "you've", "your", "yours", "yourself", "yourselves", "could", "he'd",
+"he'll", "he's", "here's", "how's", "i'd", "i'll", "i'm", "i've", "let's", "ought", "she'd", "she'll", "that's", "there's", "they'd", 
+"they'll", "they're", "they've", "we'd", "we'll", "we're", "we've", "what's", "when's", "where's", "who's", "why's", "would",'rt', 'one',
+'didnt', 'two', 'û', 'hi', 'cant', '“', 'u', 'im', '’', '”']
+
+
+#########################################
+### EXTRACT (READ DATA)
+#########################################
+
+#Leer datos en Glue dynamic frame
+datasource0 = glue_context.create_dynamic_frame.from_catalog(database = "covid", table_name = "raw_tweets_csv", transformation_ctx = "datasource0")
+
+#Leer datos en Glue dynamic frame
+datasource1 = glue_context.create_dynamic_frame.from_catalog(database = "covid", table_name = "raw_train_csv", transformation_ctx = "datasource1")
+
+#Convertir el dynamic frame en dataframe
+dfTweets = datasource0.toDF()
+dfTrain = datasource1.toDF()
+
+#Union de ambos dataframes
+df = dfTweets.union(dfTrain)
+
+#Shape del dataframe
+print("Shape dataframe: ", (df.count(), len(df.columns)))
+
+#Cantidad de valores nulos
+print("NULL VALUES:", df.where("text is null").count())
+
+
+#########################################
+### TRANSFORM (MODIFY DATA)
+#########################################
+
+#Eliminar valores null en text
+df = df.filter("text is not null")
+print("NEW COUNT ROWS", df.count())
+
+documentAssembler = DocumentAssembler()\
+.setInputCol("text")\
+.setOutputCol("document")
+
+tokenizer = Tokenizer() \
+    .setInputCols(["document"]) \
+    .setOutputCol("token")
+
+normalizer = Normalizer() \
+    .setInputCols(["token"]) \
+    .setOutputCol("normalized") \
+    .setCleanupPatterns(patterns) \
+    .setLowercase(True)
+
+stopwords_cleaner = StopWordsCleaner()\
+      .setInputCols("normalized")\
+      .setOutputCol("noStopwords")\
+      .setCaseSensitive(False)\
+      .setStopWords(stopwords_list)
+
+stemmer = Stemmer() \
+    .setInputCols(["noStopwords"]) \
+    .setOutputCol("stem")
+
+lemmatizer = Lemmatizer() \
+    .setInputCols(["stem"]) \
+    .setOutputCol("lemma") \
+    .setDictionary("s3://cwhiter-fakenews-libs/dictionary/AntBNC_lemmas_ver_001.txt", value_delimiter ="\t", key_delimiter = "->")
+
+# finisher converts tokens to human-readable output
+finisher = Finisher() \
+     .setInputCols(['lemma']) \
+     .setCleanAnnotations(False)
+     
+nlpPipeline = Pipeline(stages=[
+     documentAssembler,
+     tokenizer,
+     normalizer,
+     stopwords_cleaner, 
+     stemmer,
+     lemmatizer,
+     finisher
+ ])
+empty_df = spark.createDataFrame([['']]).toDF("text")
+
+pipelineModel = nlpPipeline.fit(empty_df)
+
+result = pipelineModel.transform(df)
+
+result = result.toPandas()
+
+result = result.drop(columns=['document', 'token', 'normalized', 'noStopwords', 'stem', 'lemma'])
+
+newDf = result[~result['finished_lemma'].apply(pd.Series).duplicated()]
+
+#Agregar nuevas columnas del feature engineering
+newDf['word_count'] = newDf['text'].apply(lambda x: len(str(x).split())) # cantidad de palabras
+newDf['unique_word_count'] = newDf['text'].apply(lambda x: len(set(str(x).split()))) # cantidad de palabras unicas
+newDf['stop_words_count'] = newDf['text'].apply(lambda x: len([chars for chars in str(x) if chars in stopwords_list ]))
+
+#Convertir DF pandas en Spark DF
+tweets = spark.createDataFrame(newDf)
+
+#Convertir Spark Df en DynamicFrame
+dynamic_frame_write = DynamicFrame.fromDF(tweets, glue_context, "dynamic_frame_write")
+
+
+#########################################
+### LOAD (WRITE DATA)
+#########################################
+
+datasink4 = glue_context.write_dynamic_frame.from_options(frame = dynamic_frame_write, connection_type = "s3", connection_options = {"path": "s3://cwhiter-fakenews-trusted/csv"}, format = "parquet", transformation_ctx = "datasink4")
+print("LISTO")
