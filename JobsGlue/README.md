@@ -10,3 +10,9 @@
   - Job Parameters: 
     - Key = --additional-python-modules, Value = spark-nlp==2.6.3,pyspark==2.4.4
     - Key = --python-modules-installer-option, Value = --upgrade
+
+### Jar
+El jar se encuentra en el siguiente link: https://s3.amazonaws.com/auxdata.johnsnowlabs.com/public/spark-nlp-spark23-assembly-2.6.3.jar. El archivo debe ser subido a un bucket de s3.
+
+### Zip
+El zip se encuentra en **Source Code** en el siguiente link https://github.com/JohnSnowLabs/spark-nlp/releases. El archivo debe ser subido a un bucket de s3.
