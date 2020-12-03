@@ -36,7 +36,24 @@ def lambda_handler(event, context):
     tabla_real = tabla_real[['city','country','text']]
     
     tabla_real.fillna('-',inplace=True)
-    limit = event['limit']
-    begin = event['begin']
+    limit = int(event['queryStringParameters']['limit'])
+    begin = int(event['queryStringParameters']['begin'])
+    
+    # tabla_real[begin:limit].to_dict(orient='records')
+    
+    responseCode = 200
+    json_dump = json.dumps(tabla_real[begin:limit].to_dict(orient='records'))
+    
+    response = {
+        'statusCode': responseCode,
+        'headers': {
+            "Content-type" : "application/json",
+            'Access-Control-Allow-Headers': 'Content-Type', 
+            'Access-Control-Allow-Origin': '*', 
+            'Access-Control-Allow-Methods': 'OPTIONS,POST,GET'
+        },
+        'body': json_dump
+    };
 
-    return tabla_real[begin:limit].to_dict(orient='records')
+    return response
+    
