@@ -11,7 +11,7 @@ from sklearn.neural_network import MLPClassifier
 s3 = boto3.client('s3')
                   
 refined_bucket = "disaster-tweets-refined"
-results_bucket = "disaster-tweets-refined"
+results_bucket = "disaster-tweets-results"
 
 def lambda_handler(event, context):
     diccionario = []
