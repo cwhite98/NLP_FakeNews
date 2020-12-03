@@ -41,11 +41,24 @@ def lambda_handler(event, context):
     final_df['target'] = pd.Series(y_pred)
     final_df = final_df.loc[final_df['target'] == 1]
     
-    limit = event['limit']
+    limit = int(event['queryStringParameters']['limit'])
     final_df = final_df[0:limit]
     
     final_df = final_df.loc[final_df['country'] != np.nan]
     country_count = final_df['country'].value_counts()
 
+    responseCode = 200 
+    json_dump = json.dumps(country_count.to_dict())
 
-    return country_count.to_dict()
+    response = {
+        'statusCode': responseCode,
+        'headers': {
+            "Content-type" : "application/json",
+            'Access-Control-Allow-Headers': 'Content-Type', 
+            'Access-Control-Allow-Origin': '*', 
+            'Access-Control-Allow-Methods': 'OPTIONS,POST,GET'
+        },
+        'body': json_dump
+    };
+
+    return response
