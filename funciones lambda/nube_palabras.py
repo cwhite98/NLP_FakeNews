@@ -11,7 +11,8 @@ from sklearn.neural_network import MLPClassifier
     
 s3 = boto3.client('s3')
                   
-bucket = "disaster-tweets-refined"
+refined_bucket = "disaster-tweets-refined"
+results_bucket = "disaster-tweets-results"
 
 def counter(comment_clear):
     cnt = Counter()
@@ -24,15 +25,15 @@ def lambda_handler(event, context):
     diccionario = []
                   
     
-    s3.download_file(bucket, "models/MLPClassifier.pkl", '/tmp/MLPClassifier.pkl')
+    s3.download_file(results_bucket, "models/MLPClassifier.pkl", '/tmp/MLPClassifier.pkl')
     clf = joblib.load('/tmp/MLPClassifier.pkl')
     
     #Datos Completos
-    final_df = s3.get_object(Bucket=bucket, Key="tweets/final_df.csv")
+    final_df = s3.get_object(Bucket=refined_bucket, Key="tweets/final_df.csv")
     final_df = pd.read_csv(final_df['Body'],engine='c')
     
     #Datos a predecir
-    testData = s3.get_object(Bucket=bucket, Key="tweets/predict_data.csv")
+    testData = s3.get_object(Bucket=refined_bucket, Key="tweets/predict_data.csv")
     X = pd.read_csv(testData['Body'], engine='c')
  
     
