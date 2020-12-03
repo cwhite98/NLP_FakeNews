@@ -40,7 +40,7 @@ def lambda_handler(event, context):
     
     final_df['target'] = pd.Series(y_pred)
     
-    limit = event['limit']
+    limit = int(event['queryStringParameters']['limit'])
     final_df = final_df[0:limit]
     
     real_df = final_df.loc[final_df['target'] == 1]
@@ -53,5 +53,18 @@ def lambda_handler(event, context):
     #counts = {"Real count": real_count, "Fake count": fake_df}
     
     json_dump = json.dumps({"Real count": int(real_count), "Fake count": int(fake_df)})
+    
+    responseCode = 200;
+    
+    response = {
+        'statusCode': responseCode,
+        'headers': {
+            "Content-type" : "application/json",
+            'Access-Control-Allow-Headers': 'Content-Type', 
+            'Access-Control-Allow-Origin': '*', 
+            'Access-Control-Allow-Methods': 'OPTIONS,POST,GET'
+        },
+        'body': json_dump
+    };
 
-    return json_dump
+    return response
